@@ -39,7 +39,7 @@ julian.hoernschemeyer@hs-osnabrueck.de
 │   ├── jquery.cookie.js  
 │   └── jquery.mobile-1.4.0.min.js  
 ├── LICENSE  
-├── node_modules
+├── node_modules  
 └── package.json
 
 ## License:
