@@ -183,7 +183,7 @@
 													_roundTxt = (_roundTxt === 0) ? 'Runde noch nicht gestartet!'
 															: _roundTxt;
 													var _chartdata = [];
-													for (var i = 0; i < data.data.length; i++) {
+													for (var i = 0; i < data.data.length - 1; i++) {
 
 														$('#' + fields.costs[i])
 																.text(
@@ -531,7 +531,7 @@
 					console.log('Analysis failed, no data analyzed!');
 					return;
 				}
-				*/
+				 */
 				console.log('Generating chart...');
 
 				analysisbuffer = data;
@@ -556,7 +556,7 @@
 					case 4: {
 						costdata4.push([ round, databyround.cost ]);
 						break;
-					}					
+					}
 					}
 					round = databyround.round;
 				}

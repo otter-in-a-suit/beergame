@@ -113,7 +113,7 @@ if (!config) {
 var express = require('express');
 var app = express();
 var http = require('http');
-var server = app.listen(config.port);
+var server = app.listen(3000); // parseInt(conf.port,10)
 var io = require('socket.io').listen(server);
 
 // Use node.js instead of Apache2
@@ -425,7 +425,14 @@ function placeOrder(req, res, session, level, quantity, extcall) {
                         function (err, result) {
                             if ((result && result[0].round != tryround) || _level === 0) {
 
-                                setvars(result, 0);
+                                _round = result[0].round;
+                                _round++;
+                                _in = 0;
+                                _out = result[0].out;
+                                _cost = result[0].cost;
+                                _store = result[0].store;
+                                _quantity = parseInt(_quantity, 10);
+
                                 logger.log('info', 'END function setvars with round: ' + _round + 'and costs: ' + result[0].cost);
 
                                 var insertQuery = 'INSERT INTO transaction (sessionid, levelid, round, inorder, outorder, `in`, `out`, store, cost) VALUES(' + _session + ',' + _nextlevel + ',' + _round + ',' + _quantity + ', ' + _outorder + ',' + _in + ',' + _out + ',' + _store + ',' + _cost + ')';
@@ -666,19 +673,19 @@ function getAndCheckRound(sessionid, callback) {
                                 _inorder = result[i].inorder;
                                 _in = result[i + 1].outorder;
                                 _out = result[i].out;
+                                _cost = result[i].cost;
                                 if (_store < 0) {
-                                    _cost = _cost + (_store * cost[1]);
                                     _store = 0;
-                                } else {
-                                    _cost = _cost + (_store * cost[0]);
                                 }
                                 _store = _store + _in;
                                 _store = _store - (_inorder + _out);
                                 if (_store < 0) {
                                     _outorder = _inorder + _out + _store;
                                     _out = _store * -1;
+                                    _cost = _cost + (_store * cost[1]);
                                 } else {
                                     _outorder = _inorder + _out;
+                                    _cost = _cost + (_store * cost[0]);
                                 }
                             }
 
@@ -690,26 +697,28 @@ function getAndCheckRound(sessionid, callback) {
                         getSQL(insertquery, false, function (result) {
                             logger.log('debug', 'Final result:');
                             logger.log('debug', result);
+                            callback(null, res);
                             // logger.log('debug','Update Round before new
                             // round starts');
                         });
                     });
             } else {
                 res = {
-                    round: _round,
-                    msg: 'Not all orders have taken place!',
-                    err: GLOBAL_ERR
-                };
+                  round: _round,
+                  msg: 'Not all orders have taken place!',
+                  err: GLOBAL_ERR
+                }
+                callback(null, res);
                 logger.log('error', res.msg);
             }
         } else {
             res = {
-                round: GLOBAL_ERR,
-                msg: 'No round found!'
-            };
+              round: GLOBAL_ERR,
+              msg: 'No round found!'
+            }
+            callback(null, res);
             logger.log('error', res.msg);
         }
-        callback(null, res);
     }
 }
 /**
