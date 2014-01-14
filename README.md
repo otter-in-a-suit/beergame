@@ -30,33 +30,19 @@ julian.hoernschemeyer@hs-osnabrueck.de
 
 ## Structure:
 ├── app.js
-
 ├── configuration.json
-
 ├── css
-
 │   ├── images
-
 │   └── jquery.mobile-1.4.0.min.css
-
 ├── index.html
-
 ├── images
-
 ├── js
-
 │   ├── flotr2.min.js
-
 │   ├── jquery-1.9.1.min.js
-
 │   ├── jquery.cookie.js
-
 │   └── jquery.mobile-1.4.0.min.js
-
 ├── LICENSE
-
 ├── node_modules
-
 └── package.json
 
 ## License:
