@@ -1,0 +1,8 @@
+{
+	"dbhost" : "localhost",
+	"database" : "beergame",
+	"dbuser" : “user”,
+	"dbpassword" : “pass”,
+	"port"	: "3000",
+	"dbsocket" : "/var/run/mysqld/mysqld.sock"
+}

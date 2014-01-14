@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Client</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8">
+<link rel="stylesheet" href="css/jquery.mobile-1.4.0.min.css" />
+
+<script type="text/javascript" src="js/jquery-1.9.1.min.js"></script>
+<script type="text/javascript" src="js/jquery.mobile-1.4.0.min.js"></script>
+<script type="text/javascript" src="js/jquery.cookie.js"></script>
+<script type="text/javascript" src="js/flotr2.min.js"></script>
+
+<script src="http://beergame.your-domain.com/socket.io/socket.io.js"></script>
+<!--
+		Description:
+		"Beer distribution game" simulation, based on modern web technologies
+
+		A project by Christian Hollinger & Julian Hoernschemeyer 
+		Driven by a uni-project @ Hochschule Osnabrück, Standort Lingen (Ems), Germany
+		
+		Project time:
+		Nov. - Jan. 2014
+		
+		Used technologies:
+		Client: jQuery 1.9.1, jQuery Mobile 1.4.0, jQuery Cookie, flotr2
+		Server: node.js, express 3.4.7, socket.io 0.9.16, node-http-proxy 0.10.4, winston 0.7.2, Apache 2.4.7, mySQL, PHP 5.5.4 @ Debian 3.2.51-1 x86_64 GNU/Linux
+		
+		Contact:
+		christian.hollinger@hs-osnabrueck.de / www.your-domain.com 
+		julian.hoernschemeyer@hs-osnabrueck.de
+
+		LICENSING:
+		This program is free software: you can redistribute it and/or modify
+		it under the terms of the GNU General Public License as published by
+		the Free Software Foundation, either version 3 of the License, or
+		(at your option) any later version.
+
+		This program is distributed in the hope that it will be useful,
+		but WITHOUT ANY WARRANTY; without even the implied warranty of
+		MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+		GNU General Public License for more details.
+
+		You should have received a copy of the GNU General Public License
+		along with this program.  If not, see <http://www.gnu.org/licenses/>.
+		-->
+<script type="text/javascript">
+	var Session = {
+		id : "",
+		level : "",
+		round : 0
+	};
+
+	/**
+	 * TODOS
+	 */
+	// TODO: force HTTP! != HTTPS
+	// TODO: query wssUpdate by Server
+	// TODO: i8n
+	// /////////////////
+	// WEBSOCKETS
+	// /////////////////
+	var socket = io.connect('http://beergame.your-domain.com');
+
+	$(document)
+			.ready(
+					function() {
+						if ($.cookie()) {
+							if ($.cookie('sessionid')) {
+								Session.id = $.cookie('sessionid');
+							}
+							if ($.cookie('level')) {
+								Session.level = $.cookie('level');
+							}
+							if ($.cookie('round')) {
+								Session.round = $.cookie('round');
+							}
+							if (Session.id && Session.level && Session.round) {
+								checkin(Session.level);
+							} else if (Session.id) {
+								getSession(Session.id);
+							} else {
+								// window.location.href = "/";
+							}
+						}
+
+						// GAMEMASTER
+						socket.on('wssRound', function(data) { // 'wssRound' can be
+							// any name but has
+							// to exist on the
+							// server. client is
+							// subscribed to
+							// that.
+							console.log('wssRound: %s', data.sessionid);
+							if (data.sessionid != null
+									&& data.sessionid == Session.id
+									&& data.round != Session.round) {
+								alert('Runde beendet! Neue Runde: '
+										+ data.round);
+								Session.round = parseInt(data.round, 10);
+								console.log('here');
+								$.cookie('round', Session.round, {
+									expires : 10,
+									path : '/'
+								});
+							}
+						});
+
+						// init
+						var initUpdate = false;
+						if (!initUpdate)
+							updateData();
+
+						var lastupdate = new Date().getTime();
+						socket
+								.on(
+										'wssUpdate',
+										function(data) {
+											console.log('Session');
+											console.log(Session);
+											// set header
+											if (data && Session.level != null) {
+												if (Session.level == 1) {
+													$('#header_levelname')
+															.text(
+																	'Einzelhändler');
+												} else if (Session.level == 2) {
+													$('#header_levelname')
+															.text(
+																	'Grosshändler');
+												} else if (Session.level == 3) {
+													$('#header_levelname')
+															.text('Zulieferer');
+												} else if (Session.level == 4) {
+													$('#header_levelname')
+															.text('Hersteller');
+												} else {
+													$('#header_levelname')
+															.text('Keine Rolle');
+												}
+
+												var levelPosition = 0;
+												levelPosition = Session.level - 1;
+
+												if (data
+														&& data.data
+														&& Session.level
+														&& data.data[levelPosition]) {
+													$('#BtnNewOrder').prop(
+															'disabled', false);
+													if (Session.round < data.data[levelPosition].round) {
+														Session.round = data.data[levelPosition].round;
+														$
+																.cookie(
+																		'round',
+																		Session.round,
+																		{
+																			expires : 10,
+																			path : '/'
+																		});
+													}
+
+													var _roundTxt = Session.round;
+
+													var fields = {
+														costs : [
+																'data_ID1_retailer_costs',
+																'data_ID2_wholesailer_costs',
+																'data_ID3_distributor_costs',
+																'data_ID4_factory_costs' ], // 'data_ID0_gamemaster_costs',
+														stock : [
+																'data_ID1_retailer_stock',
+																'data_ID2_wholesailer_stock',
+																'data_ID3_distributor_stock',
+																'data_ID4_factory_stock' ], // 'data_ID0_gamemaster_stock'
+														order : [
+																'data_ID1_retailer_order',
+																'data_ID2_wholesailer_order',
+																'data_ID3_distributor_order',
+																'data_ID4_factory_order' ]
+													// 'data_ID0_gamemaster_order'
+													};
+													_roundTxt = (_roundTxt === 0) ? 'Runde noch nicht gestartet!'
+															: _roundTxt;
+													var _chartdata = [];
+													for (var i = 0; i < data.data.length; i++) {
+
+														$('#' + fields.costs[i])
+																.text(
+																		data.data[i].cost
+																				+ '€');
+
+														$('#' + fields.stock[i])
+																.text(
+																		data.data[i].store);
+														$('#' + fields.order[i])
+																.text(
+																		data.data[i].inorder);
+
+														// add data to chart
+														_chartdata[i] = data.data[i].inorder;
+													}
+													updateBarChart(_chartdata);
+													// Chart updater
+													// updateBarChart(data.data);
+
+													$('#round').text(_roundTxt);
+													var _d = new Date();
+													$('#lastupdate')
+															.text(
+																	'Letztes Update vor '
+																			+ (_d
+																					.getTime() - lastupdate)
+																			/ 1000
+																			+ ' Sekunden um '
+																			+ _d
+																					.getHours()
+																			+ ':'
+																			+ _d
+																					.getMinutes()
+																			+ ':'
+																			+ _d
+																					.getSeconds()
+																			+ ' Uhr');
+													lastupdate = _d.getTime();
+												} else {
+													console
+															.log('No update received...');
+												}
+											}
+										});
+
+						// /////////////////
+						// HANDLER
+						// /////////////////
+						$('#BtnGetSession').click(function(event) {
+							getSession($('#txtBoxSessionKey').val());
+						});
+
+						$('#headBtnEndGameDelCookies').click(function(event) {
+							endGameDelCookies();
+						});
+
+						$('#BtnNewOrder').click(function(event) {
+							var quantity = $('#txtBoxNewOrder').val();
+							placeOrderFinishRound(quantity, false);
+						});
+
+						$('#BtnGameMaster').click(
+								function(event) {
+									console.log('BtnGameMaster');
+									var quantity = $(
+											'#txtBoxGameMasterNewRound').val();
+									placeOrderFinishRound(quantity, true);
+								});
+						$('#BtnAnalyze').click(function(event) {
+							analyzeData();
+						});
+
+						// Auto-update-handler
+						function updateData() {
+							if (Session && Session.level && Session.id != null
+									&& Session.round != null) {
+								initUpdate = true;
+								console
+										.log(
+												'Requesting update for Level %s @ Round %s',
+												Session.level, Session.round);
+								socket.emit('wscUpdate', {
+									session : Session.id
+								});
+							} else {
+								console
+										.log(
+												'Timer started but session-level (%s) and id (%s) and round (%s) was partially empty.',
+												Session.level, Session.id,
+												Session.round);
+							}
+						}
+						;
+						setInterval(updateData, 5000);
+
+						// /////////////////
+						// CHARTS
+						// /////////////////
+						var updatechartbuffer = [];
+						function updateBarChart(values) {
+							// Safe redrawing-performance if values don't change
+							if (updatechartbuffer.compare(values))
+								return;
+							if (values && values.length >= 4) {
+								console.log('Generating chart...');
+								var barTicks = [];
+								var data = [];
+								updatechartbuffer = values;
+
+								barTicks.push([ 0, 'Endkunde' ]);
+								barTicks.push([ 1, 'Einzelhandel' ]);
+								barTicks.push([ 2, 'Großhändler' ]);
+								barTicks.push([ 3, 'Lieferant' ]);
+								barTicks.push([ 4, 'Fabrik' ]);
+
+								for (var i = 0; i < values.length; i++) {
+									data.push([ i, values[i] ]);
+								}
+
+								var container = document
+										.getElementById("chartWrapper");
+
+								// Draw Graph
+								Flotr.draw(container, [ data ], {
+									//colors : [ '#EF5205' ],
+									htmlText : true,
+									fontSize : 25,
+									grid : {
+										outlineWidth : 1,
+										//outline : 'ws',
+										horizontalLines : false,
+										verticalLines : false
+									},
+									bars : {
+										show : true,
+										horizontal : false,
+										shadowSize : 0,
+										barWidth : 0.5,
+										fillOpacity : 1
+									},
+									yaxis : {
+										min : 0,
+										margin : true,
+										tickDecimals : 0
+									},
+									mouse : {
+										track : true,
+										relative : true
+									},
+									xaxis : {
+										ticks : barTicks
+									},
+									title : 'Bestellübersicht'
+								});
+
+								return true;
+							} else {
+								console
+										.log(
+												'Error in generating chart! Length: %s',
+												values.length);
+								return false;
+							}
+
+						}
+					});
+	// END $(document).ready
+
+	// /////////////////
+	// INIT
+	// /////////////////
+	function checkin(level) {
+		if (level != null) {
+			Session.level = level;
+			console.log("Level: ", Session.level);
+			$.cookie('level', Session.level, {
+				expires : 10,
+				path : '/'
+			});
+			if (level == 0) {
+				window.location.href = "#gamemaster";
+			} else {
+				window.location.href = "#data";
+
+			}
+		} else {
+			alert('Not able to check in this level');
+		}
+	}
+
+	// /////////////////
+	// CLEANUP
+	// /////////////////
+	function endGameDelCookies() {
+		var i = 0;
+		for ( var cookie in $.cookie()) {
+			$.removeCookie(cookie);
+			console.log('Removing cookie %s', cookie);
+			i++;
+		}
+		console.log('Removed %s cookies.', i);
+
+		Session.id = '';
+		Session.level = '';
+		Session.round = 0;
+	}
+
+	// /////////////////
+	// ORDERS & ROUND-MANAGEMENT
+	// /////////////////
+	function placeOrderFinishRound(quantity, finishRound) {
+		if (quantity > 0 && parseInt(quantity, 10)) {
+			if (finishRound) {
+				console.log('placeOrderFinishRound(true)');
+				wscRound(quantity);
+			} else {
+				placeOrder(quantity);
+				// $('#BtnNewOrder').prop('disabled', true);
+			}
+		} else
+			alert('Keine Menge angegeben!');
+	}
+
+	function placeOrder(quantity) {
+		var url = 'http://beergame.your-domain.com/placeOrder';
+		console.log('key', Session.id);
+		if (Session.id) {
+			console.log('URL ' + url);
+			getJSON(url, {
+				requestkey : Session.id,
+				level : Session.level,
+				quantity : quantity
+			}, function(json) {
+				console.log('Result placeOrder:')
+				console.log(json);
+				if (json.data && json.err == '') //  && json.data.sessionkey && json.data.sessionkey != -1
+					alert('Bestellung erfolgreich!');
+				else
+					alert('Runde wurde noch nicht beendet!');
+			});
+		}
+	}
+
+	function wscRound(quantity) {
+		console.log('Trying to emit wscFinishRound...');
+		if (Session.level != null && Session.id != null
+				&& Session.round != null) {
+			console.log('Emitting wscFinishRound...');
+			socket.emit('wscFinishRound', {
+				level : Session.level,
+				session : Session.id,
+				round : Session.round,
+				quantity : quantity
+			});
+			// placeOrder(quantity);
+		} else {
+			console.log('wscRound Error');
+		}
+	}
+
+	function getSession(sessionkey) {
+		var url = 'http://beergame.your-domain.com/getSession';
+		console.log('key', sessionkey);
+		if (sessionkey) {
+			getJSON(url, {
+				requestkey : sessionkey,
+			}, function(json) {
+				try {
+					console.log('Session:');
+					console.log(json.data.sessionkey);
+					if (json.data.sessionkey != null) {
+						if (json.data.sessionkey != -1) {
+
+							console.log('Success', json);
+							Session.id = json.data.sessionkey;
+							$.cookie('sessionid', Session.id, {
+								expires : 10,
+								path : '/'
+							});
+
+							window.location.href = "#level";
+						} else {
+							throw 'not getting a result about session';
+						}
+					} else {
+						throw 'JSON did not transmit a sessionkey';
+						console.log('Error', json);
+					}
+				} catch (e) {
+					console.log(e);
+					alert('Cannot login!');
+				}
+			});
+		}
+	};
+
+	function setData(data) {
+		var url = 'http://beergame.your-domain.com/getData';
+		console.log('key', Session.id);
+		if (Session.id) {
+			console.log('URL ' + url);
+			getJSON(url, {
+				requestkey : Session.id,
+			}, function(json) {
+				console.log('Result setData:' + json);
+			});
+		}
+	}
+
+	// /////////////////
+	// DATA ANALYSIS
+	// /////////////////
+	function analyzeData() {
+		var url = 'http://beergame.your-domain.com/analyzeData';
+		if (Session.id) {
+			getJSON(url, {
+				requestkey : Session.id
+			}, function(json) {
+				console.log(json);
+				drawAnalysis(json.data);
+			});
+		}
+
+		var analysisbuffer = [];
+		function drawAnalysis(data) {
+			console.log('drawAnalysis');
+			// Safe redrawing-performance if values don't change
+			//if (analysisbuffer.compare(data))
+			//	return;
+			if (data && data.length > 0) {
+				/*
+				var databyround = [];
+				console.log('Data-length: ' + data.length);
+				for (var i = 0; i < data.length; i++) {
+					var entry = data[i];
+					console.log(entry);
+					var round = parseInt(entry.round, 10);
+					console.log('Round: ' + round);
+					if (entry.round != null && round != null)
+						databyround[round] = entry;
+				}
+
+				if (databyround.length <= 0) {
+					console.log('Analysis failed, no data analyzed!');
+					return;
+				}
+				*/
+				console.log('Generating chart...');
+
+				analysisbuffer = data;
+
+				var costdata1 = [], costdata2 = [], costdata3 = [], costdata4 = [];
+				var round = 0;
+				for (var i = 0; i < data.length; i++) {
+					var databyround = data[i];
+					switch (parseInt(databyround.levelid, 10)) {
+					case 1: {
+						costdata1.push([ round, databyround.cost ]);
+						break;
+					}
+					case 2: {
+						costdata2.push([ round, databyround.cost ]);
+						break;
+					}
+					case 3: {
+						costdata3.push([ round, databyround.cost ]);
+						break;
+					}
+					case 4: {
+						costdata4.push([ round, databyround.cost ]);
+						break;
+					}					
+					}
+					round = databyround.round;
+				}
+				//console.log(databyround);
+				console.log(round);
+				console.log(costdata1);
+				console.log(costdata2);
+				console.log(costdata3);
+				console.log(costdata4);
+				var container = document
+						.getElementById("analysisChartWrapper_Costs");
+				// Draw Graph
+				costgraph = Flotr.draw(container, [ costdata1, costdata2,
+						costdata3, costdata4 ], {
+					xaxis : {
+						minorTickFreq : 4
+					},
+					grid : {
+						minorVerticalLines : true
+					},
+					title : 'Kostenverlauf'
+				});
+
+				return true;
+			} else {
+				console.log('Error in generating charts!');
+				return false;
+			}
+		}
+	}
+
+	// /////////////////
+	// CALLBACKS
+	// /////////////////
+	function getJSON(url, data, callback) {
+		/*
+		 * API-reference for data-object: const REQUEST_KEY = 'requestkey'; //
+		 * request a key const UNIQUE_KEY = 'uniquekey'; // request a new key if you
+		 * have a "voucher" to start a new session. currently disabled. data : {
+		 * requestkey : '1' // e.g. use this to request a specific game/session via
+		 * a key (get value from input-field) }
+		 */
+		console.log('Event fired!');
+		if (!data)
+			console.log('data is empty', data);
+		// TODO: error
+		if (!url)
+			console.log('url is empty', url);
+		// TODO: error
+		callback = (callback != null && callback instanceof Function) ? callback
+				: getJSONCallbackError;
+		$.ajax({
+			type : 'GET',
+			url : url,
+			data : data,
+			async : false,
+			jsonpCallback : 'jsonCallback',
+			contentType : "application/json",
+			dataType : 'jsonp',
+			success : function(json) {
+				callback(json);
+			},
+			error : function(e) {
+				console.log('Error', e);
+			}
+		});
+	};
+
+	// TODO: is debug
+	function getJSONCallback(json) {
+		if (json.sessionkey) {
+			var x = '';
+			if (json.sessionkey == -1) {
+				x = 'ERR';
+			} else {
+				console.log('Success', json);
+				x = json.sessionkey;
+			}
+			$('#GetSessionContent').text(x);
+		} else
+			console.log('Error', json);
+	}
+
+	/**
+	 * ERROR HANDLING
+	 */
+	function getJSONCallbackError(json) {
+		console.log('Unused result!', json);
+		throw 'Unused result!' + json;
+	}
+
+	// attach the .compare method to Array's prototype to call it on any array
+	Array.prototype.compare = function(array) {
+		// if the other array is a falsy value, return
+		if (!array)
+			return false;
+
+		// compare lengths - can save a lot of time
+		if (this.length != array.length)
+			return false;
+
+		for (var i = 0, l = this.length; i < l; i++) {
+			// Check if we have nested arrays
+			if (this[i] instanceof Array && array[i] instanceof Array) {
+				// recurse into the nested arrays
+				if (!this[i].compare(array[i]))
+					return false;
+			} else if (this[i] != array[i]) {
+				// Warning - two different object instances will never be equal: {x:20} != {x:20}
+				return false;
+			}
+		}
+		return true;
+	}
+</script>
+</head>
+<body>
+	<div data-role="page" id="main">
+		<header data-role="header">
+			<h1>Willkommen</h1>
+			<a href="#analysis" data-icon="info">Analyse</a>
+		</header>
+
+		<div data-role="content">
+			<h3>Prozesssysteme 2013</h3>
+			<p>Dies ist ein Projekt anlässlich des Moduls Prozesssysteme.</p>
+			<p>Bitte wählen Sie zunächst eine offene Sitzung um starten zu
+				können.</p>
+			<p>
+				<input type="text" id="txtBoxSessionKey"> <br> <input
+					type="button" id="BtnGetSession" value="Get session" class="button"
+					data-theme="c" />
+			</p>
+		</div>
+
+		<footer data-role="footer">
+			<h2>Prozesssysteme 2013</h2>
+		</footer>
+	</div>
+
+	<div data-role="page" id="level">
+		<header data-role="header">
+			<a href="#main" data-icon="delete" id='headBtnEndGameDelCookies'>Logout</a>
+			<h1>Rollenwahl</h1>
+		</header>
+
+		<div data-role="content">
+			<h3>Bitte wählen sie ihre Rolle!</h3>
+			<p>
+				Sie werden zu einer Seite weitergeleitet auf der Sie Ihre Bestellung
+				abgeben können und weitere Daten zu Ihrer Rolle einsehen können. <br>
+				Der Endkunde steuert das Spiel.
+			</p>
+			<p>
+				<input type="button" id="BtnCheckIn1" value="Einzelhändler"
+					class="button" data-theme="c" onclick="checkin(1)" /> <br> <input
+					type="button" id="BtnCheckIn2" value="Grosshändler" class="button"
+					data-theme="c" onclick="checkin(2)" /> <br> <input
+					type="button" id="BtnCheckIn3" value="Zulieferer" class="button"
+					data-theme="c" onclick="checkin(3)" /> <br> <input
+					type="button" id="BtnCheckIn4" value="Hersteller" class="button"
+					data-theme="c" onclick="checkin(4)" /> <br> <input
+					type="button" id="BtnCheckIn0" value="Endkunde" class="button"
+					data-theme="c" onclick="checkin(0)" /><br> <a
+					href="#analysis" data-role="button" data-theme="c" />Analyse</a>
+			</p>
+		</div>
+
+		<footer data-role="footer">
+			<h2>Prozesssysteme 2013</h2>
+		</footer>
+	</div>
+
+	<div data-role="page" id="data">
+		<div data-role="header">
+			<a href="#main" data-icon="delete" id='headBtnEndGameDelCookies'>Logout</a>
+			<h1 id="header_levelname"></h1>
+			<a href="#analysis" data-icon="info">Analyse</a>
+		</div>
+
+		<div data-role="content">
+			<p>
+			<div>
+				<h3>Ihre Bestellung:</h3>
+			</div>
+			<input type="text" id="txtBoxNewOrder"> <br> <input
+				type="button" id="BtnNewOrder" value="Bestellen" class="button"
+				data-icon="check" data-theme="e" />
+			</p>
+			<br>
+			<div style="font-size: 1.2em;">
+				<span><b>Runde:</b></span> <span id="round"> Bitte warten...
+				</span>
+			</div>
+			<h3>Lager-, Kosten- Bestellübersicht:</h3>
+			<p>
+			<div data-role="collapsible-set" style="font-size: 1.2em;">
+
+				<div data-role="collapsible">
+					<h3>Einzelhändler</h3>
+					<div id="data_ID1_retailer">
+						<p>
+							<span><b>Kosten:</b></span> <span id="data_ID1_retailer_costs">
+								Bitte warten... </span> <span><b>Lager:</b></span> <span
+								id="data_ID1_retailer_stock"> Bitte warten... </span> <span><b>Bestellung
+									(Endkunde):</b></span> <span id="data_ID1_retailer_order"> Bitte
+								warten... </span> <br>
+						</p>
+					</div>
+				</div>
+
+				<div data-role="collapsible">
+					<h3>Grosshändler</h3>
+					<div id="data_ID2_wholesailer">
+						<p>
+							<span><b>Kosten:</b></span> <span id="data_ID2_wholesailer_costs">
+								Bitte warten... </span> <span><b>Lager:</b></span> <span
+								id="data_ID2_wholesailer_stock"> Bitte warten... </span> <span><b>Bestellung
+									(Einzelhändler):</b></span> <span id="data_ID2_wholesailer_order">
+								Bitte warten... </span> <br>
+						</p>
+					</div>
+				</div>
+
+				<div data-role="collapsible">
+					<h3>Zulieferer</h3>
+					<div id="data_ID3_distributor">
+						<p>
+							<span><b>Kosten:</b></span> <span id="data_ID3_distributor_costs">
+								Bitte warten... </span> <span><b>Lager:</b></span> <span
+								id="data_ID3_distributor_stock"> Bitte warten... </span> <span><b>Bestellung
+									(Grosshändler):</b></span> <span id="data_ID3_distributor_order">
+								Bitte warten... </span> <br>
+						</p>
+					</div>
+				</div>
+
+				<div data-role="collapsible">
+					<h3>Hersteller</h3>
+					<div id="data_ID4_factory">
+						<p>
+							<span><b>Kosten:</b></span> <span id="data_ID4_factory_costs">
+								Bitte warten... </span> <span><b>Lager:</b></span> <span
+								id="data_ID4_factory_stock"> Bitte warten... </span> <span><b>Bestellung
+									(Zulieferer):</b></span> <span id="data_ID4_factory_order"> Bitte
+								warten... </span> <br>
+						</p>
+					</div>
+				</div>
+				<div id="lastupdate">Letztes Update vor: Bitte warten...</div>
+			</div>
+			<h3>Diagramm:</h3>
+			<div id="chartWrapper"
+				style="margin: 15px auto; width: 100%; height: 200px; text-align: left;"></div>
+			</p>
+		</div>
+
+		<footer data-role="footer">
+			<h2>Prozesssysteme 2013</h2>
+		</footer>
+	</div>
+
+	<div data-role="page" id="gamemaster">
+		<header data-role="header">
+			<a href="#main" data-icon="delete" id='headBtnEndGameDelCookies'>Logout</a>
+			<h1>Endkunde</h1>
+			<a href="#analysis" data-icon="info">Analyse</a>
+		</header>
+
+		<div data-role="content">
+			<p>
+				Der Kunde muss nachdem alle Spieler ihre Bestellung getätigt haben
+				eine Bestellung ausführen; dies startet die nächste Runde. <br>
+				Die Bestellung des Kunden wird der gesamten Supplychain angezeigt.
+			</p>
+			<p>
+				<input type="text" id="txtBoxGameMasterNewRound"> <br>
+				<input type="button" id="BtnGameMaster" data-icon="check"
+					value="Bestellen & Runde beenden" class="button" data-theme="e" />
+			</p>
+			<p>
+				<span id="GameMasterContent"></span>
+			</p>
+		</div>
+
+		<footer data-role="footer">
+			<h2>Prozesssysteme 2013</h2>
+		</footer>
+	</div>
+
+	<div data-role="page" id="analysis">
+		<header data-role="header">
+			<a href="#main" data-icon="delete" id='headBtnEndGameDelCookies'>Logout</a>
+			<h1>Analyse</h1>
+			<a data-rel="back" data-icon="back">Zurück</a>
+		</header>
+
+		<div data-role="content">
+			<h3>Analyse:</h3>
+			<input type="button" id="BtnAnalyze" data-icon="check"
+				value="Aktuelle Daten auswerten" class="button" data-theme="e" />
+
+			<div id="analysisChartWrapper_Costs"
+				style="margin: 15px auto; width: 100%; height: 200px; text-align: left;"></div>
+
+			<div id="analysisChartWrapper_Orders"
+				style="margin: 15px auto; width: 100%; height: 200px; text-align: left;"></div>
+		</div>
+
+		<footer data-role="footer">
+			<h2>Prozesssysteme 2013</h2>
+		</footer>
+	</div>
+
+</body>
+</html>

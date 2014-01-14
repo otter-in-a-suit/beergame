@@ -1,0 +1,12 @@
+{
+    "name": "Beergame",
+    "version": "0.1.0",
+    "description": "Beergame simulation",
+    "dependencies": {
+        "socket.io": "latest",
+        "express": "latest",
+        "mysql": "latest",
+        "winston" : "latest"
+    },
+    "author": "christian.hollinger@hs-osnabrueck.de"
+}
